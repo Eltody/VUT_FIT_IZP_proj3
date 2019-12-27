@@ -1,0 +1,544 @@
+#include <stdlib.h>
+#include <string.h>
+#include <stdio.h>
+#include <stdbool.h>
+
+
+typedef struct 
+{
+    int rows;
+    int cols;
+    unsigned char *cells;
+} Map;
+
+int previousRow, previousCol, nextBorder;
+
+/**
+ * @function    MazeLoading
+ * @abstract    Load file data into maze structure
+ * @discussion  Load file data into maze structure or return invalid value
+ * 
+ * @param   file    File with data
+ * @param   mazeMap Maze structure
+ */
+int MazeLoading(FILE *file, Map *mazeMap)
+{
+    int maxLengthSize = 100;
+    char fileLine[maxLengthSize];
+    bool notFirstLine = false;
+    int currentRow, currentCol;
+
+    if (file == NULL)
+        return false;
+
+    while (fgets(fileLine, maxLengthSize, file))
+    {
+        if (notFirstLine)
+        {
+            if (currentRow > mazeMap->rows)
+                return false;
+
+            for (int i = 0; i < mazeMap->cols*2-1; i+=2)
+            {
+                if (fileLine[i] < 48 || 55 < fileLine[i] || currentCol > mazeMap->cols)
+                    return false;
+
+                mazeMap->cells[currentRow * mazeMap->cols + currentCol] = fileLine[i] - 48;
+                currentCol++;
+            }
+
+            if (currentCol != mazeMap->cols)
+                return false;
+                
+            currentCol = 0;
+            currentRow++;
+        }
+        else
+        {
+            mazeMap->rows = atoi(&fileLine[0]);
+            mazeMap->cols = atoi(&fileLine[2]);
+            mazeMap->cells = malloc(mazeMap->rows * mazeMap->cols * sizeof(*mazeMap->cells));
+            notFirstLine = true;
+
+            if (mazeMap->rows <= 0 || mazeMap->cols <= 0)
+                return false;
+        }
+        
+    }
+
+    if (currentRow != mazeMap->rows)
+        return false;
+
+    return true;
+}
+
+/**
+ * @function    isBorder
+ * @abstract    Check border on selected cell and side
+ * @discussion  Check border on selected cell and side or return invalid value
+ * 
+ * @param   map Maze map
+ * @param   r   Row index of cell
+ * @param   c   Column index of cell
+ * @param   border  Side of cell
+ */
+bool isBorder(Map *map, int r, int c, int border)
+{
+    int cellBorderValue = map->cells[((r - 1) * map->cols) + (c - 1)];
+    
+    switch (border)
+    {
+        case 1:
+            return (cellBorderValue & 1) == 1;
+            break;
+
+        case 2:
+            return (cellBorderValue & 2) == 2;
+            break;
+
+        case 3:
+            return (cellBorderValue & 4) == 4;
+            break;
+
+        default:
+            fprintf(stderr, "Invalid border input.\n");
+            return false;
+            break;
+    }
+}
+
+/**
+ * @function    GetNextBorder
+ * @abstract    Move side index
+ * @discussion  Move side index on selected cell and direction or return invalid value
+ * 
+ * @param   r   Row index of cell
+ * @param   c   Column index of cell
+ * @param   leftright   Direction
+ * @param   selectedBorder  Side of cell
+ */
+int GetNextBorder(int r, int c, int leftright, int selectedBorder)
+{
+    int directionModi;
+    int rowModi = (r & 1) == 1 ? 1 : -1;
+    int colModi = (c & 1) == 1 ? 1 : -1;
+
+    switch (leftright)
+    {
+    case 0: // right
+        directionModi = 1;
+        break;
+
+    case 1:
+        directionModi = -1;
+        break;
+    
+    default:
+        fprintf(stderr, "Invalid direction parameter.\n");
+        return -1;
+        break;
+    }
+
+    selectedBorder += directionModi * rowModi * colModi;
+
+    if (selectedBorder == 0)
+        return 3;
+
+    if (selectedBorder == 4)
+        return 1;
+
+    return selectedBorder;
+}
+
+/**
+ * @function    GetMoveBorder
+ * @abstract    Select next border on selected input
+ * @discussion  Select next border on selected input or return invalid value
+ * 
+ * @param   map Maze map
+ * @param   r   Row index of cell
+ * @param   c   Column index of cell
+ * @param   leftright   Direction
+ * @param   selectedBorder  Selected border from previous move
+ */
+int GetMoveBorder(Map *map, int r, int c, int leftright, int selectedBorder)
+{
+    int currentBorder = selectedBorder == 0 ? nextBorder : selectedBorder;
+    bool oddRow = (r & 1) == 1;
+    bool oddCol = (c & 1) == 1;
+
+    if (previousCol == 0)
+    {
+        if (!(((r == 1 || r == map->rows) && 0 < c && c <= map->cols) || ((c == 1 || c == map->cols) && 0 < r && r <= map->rows)))
+        {
+            fprintf(stderr, "Invaid position arguments");
+            return -1;
+        }
+    }
+
+    switch (leftright)
+    {
+    case 0: // right
+
+        if (oddRow)
+        {
+            if (oddCol)
+            {
+                if ((currentBorder == 1 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == 1)) && !isBorder(map, r, c,  1)))
+                    return 2;
+
+                if ((currentBorder == 3 || currentBorder == 0) && (!isBorder(map, r, c,  3)))
+                    return 1;
+
+                if ((currentBorder == 2 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == map->cols)) && !isBorder(map, r, c,  2)))
+                    return 3;
+            }
+            else
+            {
+                if ((currentBorder == 1 || currentBorder == 0) && (previousCol != 0 && !isBorder(map, r, c,  1)))
+                    return 3;
+
+                if ((currentBorder == 3 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && r == map->rows)) && !isBorder(map, r, c,  3)))
+                    return 2;
+
+                if ((currentBorder == 2 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == map->cols)) && !isBorder(map, r, c,  2)))
+                    return 1;
+            }
+        }
+        else
+        {
+            if (oddCol)
+            {
+                if ((currentBorder == 1 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == 1)) && !isBorder(map, r, c,  1)))
+                    return 3;
+
+                if ((currentBorder == 3 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && r == map->rows)) && !isBorder(map, r, c,  3)))
+                    return 2;
+
+                if ((currentBorder == 2 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == map->cols)) && !isBorder(map, r, c,  2)))
+                    return 1;
+            }
+            else
+            {
+                if ((currentBorder == 1 || currentBorder == 0) && (previousCol != 0 && !isBorder(map, r, c,  1)))
+                    return 2;
+
+                if ((currentBorder == 3 || currentBorder == 0) && (previousCol != 0 && !isBorder(map, r, c,  3)))
+                    return 1;
+
+                if ((currentBorder == 2 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == map->cols)) && !isBorder(map, r, c,  2)))
+                    return 3;
+            }
+        }
+        break;
+
+    case 1: // left
+
+        if (oddRow)
+        {
+            if (oddCol)
+            {
+                if ((currentBorder == 1 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == 1)) && !isBorder(map, r, c,  1)))
+                    return 3;
+
+                if ((currentBorder == 3 || currentBorder == 0) && (!isBorder(map, r, c,  3)))
+                    return 2;
+
+                if ((currentBorder == 2 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == map->cols)) && !isBorder(map, r, c,  2)))
+                    return 1;
+            }
+            else
+            {
+                if ((currentBorder == 1 || currentBorder == 0) && (previousCol != 0 && !isBorder(map, r, c,  1)))
+                    return 2;
+
+                if ((currentBorder == 3 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && r == map->rows)) && !isBorder(map, r, c,  3)))
+                    return 1;
+
+                if ((currentBorder == 2 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == map->cols)) && !isBorder(map, r, c,  2)))
+                    return 3;
+            }
+        }
+        else
+        {
+            if (oddCol)
+            {
+                if ((currentBorder == 1 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == 1)) && !isBorder(map, r, c,  1)))
+                    return 2;
+
+                if ((currentBorder == 3 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && r == map->rows)) && !isBorder(map, r, c,  3)))
+                    return 1;
+
+                if ((currentBorder == 2 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == map->cols)) && !isBorder(map, r, c,  2)))
+                    return 3;
+            }
+            else
+            {
+                if ((currentBorder == 1 || currentBorder == 0) && (previousCol != 0 && !isBorder(map, r, c,  1)))
+                    return 3;
+
+                if ((currentBorder == 3 || currentBorder == 0) && (previousCol != 0 && !isBorder(map, r, c,  3)))
+                    return 2;
+
+                if ((currentBorder == 2 || currentBorder == 0) && ((previousCol != 0 || (previousCol == 0 && c == map->cols)) && !isBorder(map, r, c,  2)))
+                    return 1;
+            }
+        }
+        break;
+
+    default:
+        fprintf(stderr, "Invalid direction parameter.\n");
+        return -1;
+        break;
+    }
+
+    fprintf(stderr, "Invalid arguments.\n");
+    return -1;
+}
+
+/**
+ * @function    start_border
+ * @abstract    Select next border or move border index in cell
+ * @discussion  Select next border on selected input or move border index in cell or return invalid value
+ * 
+ * @param   map Maze map
+ * @param   r   Row index of cell
+ * @param   c   Column index of cell
+ * @param   leftright   Direction
+ */
+int start_border(Map *map, int r, int c, int leftright)
+{
+    int selectedBorder = 0;
+    selectedBorder = GetMoveBorder(map, r, c, leftright, selectedBorder);
+
+    if (selectedBorder == -1)
+        return -1;
+        
+    bool goFinding = isBorder(map, r, c, selectedBorder);
+
+    while(goFinding)
+    {
+        selectedBorder = GetNextBorder(r, c, leftright, selectedBorder);
+
+        if (selectedBorder == -1)
+            return -1;
+
+        goFinding = isBorder(map, r, c, selectedBorder);
+    }
+
+    return selectedBorder;
+}
+
+/**
+ * @function    SolveMaze
+ * @abstract    Solve maze and print path
+ * @discussion  Solve maze and print path
+ * 
+ * @param   map Maze map
+ * @param   startRow    Start row index of cell
+ * @param   startCol    Start column index of cell
+ * @param   direction   Direction
+ */
+void SolveMaze(Map *mazeMap, int startRow, int startCol, int direction)
+{
+    bool goFinding = true;
+    int currentRow = startRow;
+    int currentCol = startCol;
+
+    while (goFinding)
+    {
+        int nextMove = start_border(mazeMap, currentRow, currentCol, direction);
+
+        switch (nextMove)
+        {
+        case -1:
+            return;
+            break;
+        
+        default:
+            previousCol = currentCol;
+            previousRow = currentRow;
+
+            switch (nextMove)
+            {
+            case 1:
+                currentCol--;
+                nextBorder = 2;
+                break;
+
+            case 2:
+                currentCol++;
+                nextBorder = 1;
+                break;
+
+            case 3:
+                if ((currentRow & 1) == 1)
+                    if ((currentCol & 1) == 1)
+                        currentRow--;
+                    else
+                        currentRow++;
+                else
+                    if ((currentCol & 1) == 1)
+                        currentRow++;
+                    else
+                        currentRow--; 
+                         
+                nextBorder = 3;                
+                break;
+
+            case -1:
+                return;
+                break;
+
+            default:
+                fprintf(stderr, "Unknown error.");
+                return;
+                break;
+            }
+            break;
+        }
+
+        printf("%i,%i\n", previousRow, previousCol);
+
+        if (currentRow == 0 || currentRow > mazeMap->rows || currentCol == 0 || currentCol > mazeMap->cols)
+            goFinding = false;
+    }
+}
+
+/**
+ * @function    PrintHelp
+ * @abstract    Print help
+ * @discussion  Print help
+ */
+int PrintHelp()
+{
+    printf("List of parameters and their usage\n");
+    printf("----------------------------------\n\n");
+    printf("\"--help\" - Show this help\n\n");
+    printf("\"--test\" - test, if file data are valid. Require path to file\n");
+    printf("Usage: --test [path to file]\n\n");
+    printf("\"--lpath\" - Try to solve maze with left hand direction.\n");
+    printf("Required arguments:\n");
+    printf("- Start cell row index\n");
+    printf("- Start cell column index\n");
+    printf("- Path to file\n");
+    printf("Usage: --lpath [row index] [column index] [path to file]\n\n");
+    printf("\"--rpath\" - Try to solve maze with left hand direction. Same usage and arguments as \"--lpath\"\n");
+
+    return 0;
+}
+
+/**
+ * @function    CheckArguments
+ * @abstract    Check arguments and run selected type of program
+ * @discussion  Check arguments and run selected type of program
+ * 
+ * @param   argc    Arguments count
+ * @param   argv    Arguments
+ */
+int CheckArguments(int argc, char ** argv)
+{
+    switch (argc)
+    {
+    case 1:
+        fprintf(stderr, "Not enough arguments.\n");
+        return 1;
+        break;
+
+    case 2:
+        if (!strcmp(argv[1], "--help"))
+            return PrintHelp();
+        else
+        {
+            fprintf(stderr, "Unspecified argument.\n");
+            return 1;
+        }
+        break;
+
+    case 3:
+        if (!strcmp(argv[1], "--test"))
+        {
+            FILE *mazeFile = fopen(argv[2], "r");
+
+            if (mazeFile == NULL)
+            {
+                fprintf(stderr, "Invalid file.\n");
+                return 1;
+            }
+
+            Map mazeMap;
+            if (MazeLoading(mazeFile, &mazeMap))
+                printf("Valid\n");
+            else
+                printf("Invalid\n");
+
+            return 0;
+        }
+        else
+        {
+            fprintf(stderr, "Unspecified argument.\n");
+            return 1;
+        }
+        break;
+
+    case  4:
+        fprintf(stderr, "Too much or not enough arguments.\n");
+        return 1;
+        break;
+
+    case 5:
+        if (!strcmp(argv[1], "--lpath") || !strcmp(argv[1], "--rpath"))
+        {
+            int direction = 1;
+
+            if (strcmp(argv[1], "--lpath"))
+                direction = 0;
+
+            FILE *mazeFile = fopen(argv[4], "r");
+
+            if (mazeFile == NULL)
+            {
+                fprintf(stderr, "Invalid file.\n");
+                return 1;
+            }
+
+            Map mazeMap;
+            if (MazeLoading(mazeFile, &mazeMap))
+            {
+                int startRow = atoi(argv[2]);
+                int startCol = atoi(argv[3]);
+
+                SolveMaze(&mazeMap, startRow, startCol, direction);
+            }
+            else
+                printf("Invalid\n");
+
+            return 0;
+        }
+        else
+        {
+            fprintf(stderr, "Unspecified argument.\n");
+            return 1;
+        }
+
+        break;
+    
+    default:
+        fprintf(stderr, "Too much arguments.\n");
+        return 1;
+        break;
+    }
+}
+
+/**
+ * @function    main
+ * @abstract    Main function
+ * @discussion  Main function
+ * 
+ * @param   argc    Arguments count
+ * @param   argv    Arguments
+ */
+int main(int argc, char **argv)
+{
+    return CheckArguments(argc, argv);
+}
